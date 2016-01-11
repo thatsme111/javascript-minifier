@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Document</title>
+<!-- 	// <script type="text/javascript" src="jsmip/jsmip.php"></script> -->
+	<script type="text/javascript">
+	// 	d=document;w=window;f=Function;
+	// 	k=["addEventListener","DOMContentLoaded","getElementById","innerHTML"];
+	// 	w[k[0]](k[1],f("console.log('thatsme')"));
+
+	// 	// window.addEventListener("DOMContentLoaded", function(){
+	// 	// 	document.getElementById("demo").innerHTML = "Hello Dolly.";
+	// 	// });
+
+	// 	w[k[0]](k[1],f("d[k[2]]('demo')[k[3]]=\"Hello Dolly.\""));		
+
+	x = findMax(1, 123, 500, 115, 44, 88);
+	
+	function findMax() {
+	    var i;
+	    a = arguments;
+	    var max = -Infinity;
+	    for (i = 0; i < a.length; i++) {
+	        if (a[i] > max) {
+	            max = a[i];
+	        }
+	    }
+	    return max;
+	}
+
+	console.log(x);
+	</script>
+</head>
+<body>
+	<div id="demo"></div>
+</body>
+</html>
