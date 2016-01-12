@@ -5,9 +5,9 @@
 	<title>Document</title>
 <!-- 	// <script type="text/javascript" src="jsmip/jsmip.php"></script> -->
 	<script type="text/javascript">
-	// 	d=document;w=window;f=Function;
-	// 	k=["addEventListener","DOMContentLoaded","getElementById","innerHTML"];
-	// 	w[k[0]](k[1],f("console.log('thatsme')"));
+		// d=document;w=window;f=Function;
+		// k=["addEventListener","DOMContentLoaded","getElementById","innerHTML"];
+		// w[k[0]](k[1],f("console.log('thatsme')"));
 
 	// 	// window.addEventListener("DOMContentLoaded", function(){
 	// 	// 	document.getElementById("demo").innerHTML = "Hello Dolly.";
@@ -15,21 +15,35 @@
 
 	// 	w[k[0]](k[1],f("d[k[2]]('demo')[k[3]]=\"Hello Dolly.\""));		
 
-	x = findMax(1, 123, 500, 115, 44, 88);
-	
-	function findMax() {
-	    var i;
-	    a = arguments;
-	    var max = -Infinity;
-	    for (i = 0; i < a.length; i++) {
-	        if (a[i] > max) {
-	            max = a[i];
-	        }
-	    }
-	    return max;
-	}
 
-	console.log(x);
+
+	
+	var t0,t1,outer, inner, f = Function;
+	f("console.log('thatsme')");
+
+
+
+
+	t0 = performance.now();
+	outer = f("console.log('outer');inner=f(\"console.log('inner');\" );inner();");
+	outer();
+	t1 = performance.now();
+	console.log("after compression: " + (t1 - t0) + " milliseconds.");	
+
+	t0 = performance.now();
+	outer = function(){
+		console.log('outer');
+		inner = function(){
+			console.log('inner');
+		};
+		inner();
+	}
+	outer();
+	t1 = performance.now();
+	console.log("normal: " + (t1 - t0) + " milliseconds.")
+
+	
+	
 	</script>
 </head>
 <body>
