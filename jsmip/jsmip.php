@@ -9,6 +9,7 @@ class JSMIP {
 	public $variable_array = "x";
 	public $variable_function = "z";
 	public $scope_text_start = "(function(){})();";
+	public $before_length;
 
 	public function getJavascriptWithScope(){
 		$output = "(function(){";
@@ -25,13 +26,43 @@ class JSMIP {
 		return $output;
 	}
 
+	public function getJavascriptWithScopeLength(){
+		$output = "(function(){";
+		if(count($this->string_literal)>0){
+			$output .= "var $this->variable_array=[";
+			foreach ($this->string_literal as $key => $value) {
+				$output .= "$key,";		
+			}	
+			$output = substr($output, 0, strlen($output)-1);
+			$output .= "];";
+		}
+		$output .= $this->javascript;
+		$output .= "})();";
+		return strlen($output);
+	}
+
 
 	public function processFunction($function){
+		//array which contains all the declared variables in given scope of function
+		//including function arguments
+		$var_array = [];
+
+		//process arguments and push them into var_array
+		$round_start = strpos($function, "(");
+		$round_end = strpos($function, ")");
+
+		//if any argument process it as a variable
+		if($round_end-$round_start > 1){
+			$arguments = substr($function, $round_start+1, $round_end-$round_start-1);
+			$arguments = explode(",", $arguments);	
+			foreach ($arguments as $key => $value) {
+				array_push($var_array, $value);
+			}
+		}
+
 		//process variable if exists
 		$index_var = strpos($function, "var ");
-
 		if($index_var){
-
 			$index_semicolon = strpos($function, ";", $index_var);
 			$variables = substr($function, $index_var+4, $index_semicolon-$index_var-4);
 			/*
@@ -43,7 +74,6 @@ class JSMIP {
 			* and object declaration 
 			* a={b:"something"}
 			*/
-			$var_array = [];
 			$iterator = 0;
 			$index_start = 0;
 			$count_curly = 0;
@@ -69,35 +99,34 @@ class JSMIP {
 				$iterator++;
 			}
 			$var = substr($variables, $index_start, $iterator-$index_start);
-			// echo "$var\n";
+
 			if(!strpos($var, " in "))
 				array_push($var_array, $var);
 			//print_r($var_array);
+		}
 
-			//process function for vaiable names
-			foreach ($var_array as $key => $value) {
-				$index_equalto = strpos($value, "=");
-				if($index_equalto)
-					$var_name = substr($value, 0, $index_equalto);
-				else
-					$var_name = $value;
-				array_push($this->allVariableNames, $var_name);
-			}
-			// echo $variables."\n";
-			// print_r($var_array);
-			// exit;
+		//process function for vaiable names
+		foreach ($var_array as $key => $value) {
+			$index_equalto = strpos($value, "=");
+			if($index_equalto)
+				$var_name = substr($value, 0, $index_equalto);
+			else
+				$var_name = $value;
+			array_push($this->allVariableNames, $var_name);
 		}
 	}
 
 	public function readAllFunctions(){
-
 		$pattern = "/function\(\)/";
+		// $pattern = "/function\([_$,a-zA-Z0-9]*\)/";
+		
 		preg_match_all($pattern, $this->javascript, $matches, PREG_OFFSET_CAPTURE, 0);
 
-		//get function body
+		$index_temp=0;
+		//get complete function declaration
 		foreach ($matches[0] as $match) {	
 			$function_start = $match[1];
-			$iterator = $function_start+10;
+			$iterator = strpos($this->javascript, "{", $function_start);
 			$count_curly = 0;
 			$isdone = false;
 
@@ -107,7 +136,7 @@ class JSMIP {
 					$count_curly += 1;
 				if($this->javascript[$iterator]=="}")
 					$count_curly -= 1;
-				if($count_curly==0)
+				if($count_curly==0 || !isset($this->javascript[$iterator]))
 					$isdone = true;
 				$iterator++;
 			}
@@ -115,11 +144,14 @@ class JSMIP {
 			$function_end = $iterator;
 			$function = substr($this->javascript, $function_start, $function_end-$function_start);
 			$this->processFunction($function);
-			// echo $function."\n\n";
+
+			//redefine function with f("content");
+			$this->redefineFunctionDeclaration($function);
 		}
 	}
 
 	public function setGlobalVariables(){
+		$this->allVariableNames = array_unique($this->allVariableNames);
 		if(array_search($this->variable_array, $this->allVariableNames)){
 			//change it to something else
 		}		
@@ -176,20 +208,43 @@ class JSMIP {
 		}
 	}
 
+	public function redefineFunctionDeclaration($function){
+		$original_length = strlen($function);
+		$function_body = substr($function, 11, strlen($function)-1-11);
+		$function_body = str_replace("\"", "\\\"", $function_body);
+		$after_length = strlen("$this->variable_function(\"$function_body\");");
+		if($after_length < $original_length)
+			$this->javascript=str_replace($function, "$this->variable_function(\"$function_body\");", $this->javascript);
+		// else
+		// 	return
+		// $function = ;
+		// $after_length = strlen($function);
+		// echo $original_length."\n";
+		// echo $after_length."\n";
+		// echo $function."\n\n";
+		
+	}
+
 	public function getMinifiedJavascript($filename){
 
 		//read file content
 		$this->javascript = file_get_contents($filename);
+		// echo strlen($this->javascript)."\n";
 
 		//read variable declaration inside code
 		$this->readAllFunctions();
-		$this->allVariableNames = array_unique($this->allVariableNames);
-		$this->setGlobalVariables();
-		//print_r($this->allVariableNames);
 
+		//set global variables
+		$this->setGlobalVariables();
+		
+		//process literal and replace them by array position
 		$this->processStringLiterals();
-		echo "\n\n".$this->getJavascriptWithScope();
-		exit;
+
+		//process function and redefine it as Function("")
+		$this->redefineFunctionDeclaration();
+
+		// echo strlen($this->getJavascriptWithScope());		
+		return $this->getJavascriptWithScope();
 
 
 
@@ -206,101 +261,59 @@ class JSMIP {
 			->hideDebugInfo()
 			->write();*/
 
-		/*
-		* list down strings and thier count
-		* $file_content = "console.log(\"thatsme\")";
-		*/
-		$file_content = file_get_contents($filename);
-		$pattern = "/\"[a-zA-Z0-9]*\"/";
-		preg_match_all($pattern, $file_content, $matches, PREG_OFFSET_CAPTURE, 0);
+		// /*
+		// * list down strings and thier count
+		// * $file_content = "console.log(\"thatsme\")";
+		// */
+		// $file_content = file_get_contents($filename);
+		// $pattern = "/\"[a-zA-Z0-9]*\"/";
+		// preg_match_all($pattern, $file_content, $matches, PREG_OFFSET_CAPTURE, 0);
 
-		/*
-		* create a dictionary in which array index is word and value occurance
-		* example $this->string_literal["object"]=23;
-		*/
-		$this->string_literal = [];
-		foreach ($matches[0] as $key => $value) {
-			if(isset($this->string_literal[$value[0]]))
-				$this->string_literal[$value[0]] += 1;
-			else
-				$this->string_literal[$value[0]] = 1;
-		}
-		//sort them		
-		arsort($this->string_literal);
+		// /*
+		// * create a dictionary in which array index is word and value occurance
+		// * example $this->string_literal["object"]=23;
+		// */
+		// $this->string_literal = [];
+		// foreach ($matches[0] as $key => $value) {
+		// 	if(isset($this->string_literal[$value[0]]))
+		// 		$this->string_literal[$value[0]] += 1;
+		// 	else
+		// 		$this->string_literal[$value[0]] = 1;
+		// }
+		// //sort them		
+		// arsort($this->string_literal);
 
-		//replace string with array index
-		$javascript = $file_content;
-		$array_index = 0;
-		$array_values = [];
+		// //replace string with array index
+		// $javascript = $file_content;
+		// $array_index = 0;
+		// $array_values = [];
 
-		foreach ($this->string_literal as $key => $value) {
-			//do not process for single occurance
-			if($value<2)
-				continue;
-			$temp_code = $javascript;
-			$pattern = "/".$key."/";
-			$replacement = "h[$array_index]";
-			$temp_code = preg_replace($pattern, $replacement, $temp_code);			
-			if(strlen($file_content) > strlen($temp_code)){
-				array_push($array_values, $key);
-				$javascript = $temp_code;
-				$array_index++;
-			}
-		}
-		$array_content = "";
-		foreach ($array_values as $key => $value) {
-			$array_content .= $value.",";
-		}
-		$array_content = substr($array_content, 0, strlen($array_content)-1);
-		// echo $array_content;
+		// foreach ($this->string_literal as $key => $value) {
+		// 	//do not process for single occurance
+		// 	if($value<2)
+		// 		continue;
+		// 	$temp_code = $javascript;
+		// 	$pattern = "/".$key."/";
+		// 	$replacement = "h[$array_index]";
+		// 	$temp_code = preg_replace($pattern, $replacement, $temp_code);			
+		// 	if(strlen($file_content) > strlen($temp_code)){
+		// 		array_push($array_values, $key);
+		// 		$javascript = $temp_code;
+		// 		$array_index++;
+		// 	}
+		// }
+		// $array_content = "";
+		// foreach ($array_values as $key => $value) {
+		// 	$array_content .= $value.",";
+		// }
+		// $array_content = substr($array_content, 0, strlen($array_content)-1);
+		// // echo $array_content;
 
 		/*
 		* create var j = Function;
 		* replace function() -> j
 		*/
-		$javascript = $file_content; //remove this line
-		$pattern = "/function\(\)/";
-		$replacement = "j";
-		preg_match_all($pattern, $javascript, $matches, PREG_OFFSET_CAPTURE, 0);
 		
-		$index_temp = 0;
-		$temp_code = $javascript;
-		foreach ($matches[0] as $match) {	
-			$index_start = $match[1]+10;
-			$count_curly = 0;
-			$isdone = false;
-			while(!$isdone){
-				if($javascript[$index_start]=="{")
-					$count_curly += 1;
-				if($javascript[$index_start]=="}")
-					$count_curly -= 1;
-				if($count_curly==0)
-					$isdone = true;
-				$index_start++;
-			}
-			$function_original = substr($javascript, $match[1], $index_start-$match[1]);
-			$function_body = substr($javascript, $match[1]+11, $index_start-$match[1]-11-1);
-			$function = str_replace("\"", "'", $function_original);
-			$function = "f(\"$function_body\");";
-			
-			$index_var = strpos($function_body, "var");
-			$index_semicolon = strpos($function, ";", $index_var);
-			if($index_var==true){
-				$variables = substr($function_body, $index_var, $index_semicolon-$index_var-2);
-				echo $variables."\n";
-			}
-
-			
-
-			$function_start = $match[1];
-			$function_end = $index_start; 
-			// $javascript = substr($javascript, 0, $function_start).$function.substr($javascript, $function_end);
-			//$javascript = str_replace($function_original, $function, $javascript);
-			// echo $javascript;
-			// break;
-			if($index_temp++ == 5)
-				break;
-		}
 		
 		// echo substr($file_content, $index_start+10, 20);
 		
@@ -325,10 +338,11 @@ class JSMIP {
 	}
 }
 
-// header("Content-type: text/javascript");
-header("Content-type: text/html");
+header("Content-type: text/javascript");
+// header("Content-type: text/html");
 $jsmip = new JSMIP;
-echo $jsmip->getMinifiedJavascript("../lib/jquery-1.12.0.min.js");
+$minifiedJavascript = $jsmip->getMinifiedJavascript("../lib/jquery-1.12.0.min.js");
+echo $minifiedJavascript;
 // echo " <pre>".JSMIP::getMinifiedJavascript("../lib/jquery-1.12.0.min.js")."</pre>";
 // echo JSMIP::getMinifiedJavascript("../test/test02.js");
 ?>
