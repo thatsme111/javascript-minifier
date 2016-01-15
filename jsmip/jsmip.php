@@ -6,15 +6,16 @@ class JSMIP {
 	public $javascript;
 	public $allVariableNames = [];
 	public $string_literal = [];
-	public $variable_array = "x";
-	public $variable_function = "z";
+	public $variable_array = "xyz";
+	public $variable_function = "o";
 	public $scope_text_start = "(function(){})();";
 	public $before_length;
 
 	public function getJavascriptWithScope(){
 		$output = "(function(){";
+		$output .= "var o=Function,";
 		if(count($this->string_literal)>0){
-			$output .= "var $this->variable_array=[";
+			$output .= "$this->variable_array=[";
 			foreach ($this->string_literal as $key => $value) {
 				$output .= "$key,";		
 			}	
@@ -143,10 +144,9 @@ class JSMIP {
 
 			$function_end = $iterator;
 			$function = substr($this->javascript, $function_start, $function_end-$function_start);
-			$this->processFunction($function);
 
-			//redefine function with f("content");
-			$this->redefineFunctionDeclaration($function);
+			//process function for variable count
+			$this->processFunction($function);
 		}
 	}
 
@@ -208,28 +208,49 @@ class JSMIP {
 		}
 	}
 
-	public function redefineFunctionDeclaration($function){
-		$original_length = strlen($function);
-		$function_body = substr($function, 11, strlen($function)-1-11);
-		$function_body = str_replace("\"", "\\\"", $function_body);
-		$after_length = strlen("$this->variable_function(\"$function_body\");");
-		if($after_length < $original_length)
-			$this->javascript=str_replace($function, "$this->variable_function(\"$function_body\");", $this->javascript);
-		// else
-		// 	return
-		// $function = ;
-		// $after_length = strlen($function);
-		// echo $original_length."\n";
-		// echo $after_length."\n";
-		// echo $function."\n\n";
-		
+	public function redefineFunctionDeclaration(){
+
+		$pattern = "/function\(\)/";
+		$isFound = preg_match($pattern, $this->javascript, $matches, PREG_OFFSET_CAPTURE)==1?true:false;
+
+		while($isFound){
+			$function_start = $matches[0][1];
+			$iterator = strpos($this->javascript, "{", $function_start);
+			$count_curly = 0;
+			$isdone = false;
+
+			//loop until count of curly bracket is zero 
+			while(!$isdone){
+				if($this->javascript[$iterator]=="{")
+					$count_curly += 1;
+				if($this->javascript[$iterator]=="}")
+					$count_curly -= 1;
+				if($count_curly==0 || !isset($this->javascript[$iterator]))
+					$isdone = true;
+				$iterator++;
+			}
+			$function_end = $iterator;
+			$function = substr($this->javascript, $function_start, $function_end-$function_start);
+			$function_body = substr($this->javascript, $function_start+11, $function_end-$function_start-1-11);
+			$redefined_function = "$this->variable_function(\"$function_body\");";
+			if(strlen($function)>strlen($redefined_function))
+				$this->javascript = str_replace($function, $redefined_function, $this->javascript);
+
+			$isFound = preg_match($pattern, $this->javascript, $matches, PREG_OFFSET_CAPTURE)==1?true:false;
+		}
 	}
 
 	public function getMinifiedJavascript($filename){
-
-		//read file content
-		$this->javascript = file_get_contents($filename);
-		// echo strlen($this->javascript)."\n";
+		//using google's closure compiler api
+		$closure_compiler = new PhpClosure();
+		$this->javascript = $closure_compiler->add($filename)
+			->advancedMode()
+			->useClosureLibrary()
+			->hideDebugInfo()
+			->write();
+		
+		// $filename = "../lib/jquery/jquery_closure_advance.js";
+		// $this->javascript = file_get_contents($filename);
 
 		//read variable declaration inside code
 		$this->readAllFunctions();
@@ -240,94 +261,11 @@ class JSMIP {
 		//process literal and replace them by array position
 		$this->processStringLiterals();
 
-		//process function and redefine it as Function("")
+		//redefine function declaration replace function(){content} -> z("");
 		$this->redefineFunctionDeclaration();
 
 		// echo strlen($this->getJavascriptWithScope());		
 		return $this->getJavascriptWithScope();
-
-
-
-
-		//read file in $file array
-		$file = file($filename);
-
-		//remove extra white spaces and concatenate into single line
-		//using google's closure compiler api
-		/*$closure_compiler = new PhpClosure();
-		$file_content = $closure_compiler->add($filename)
-			->advancedMode()
-			->useClosureLibrary()
-			->hideDebugInfo()
-			->write();*/
-
-		// /*
-		// * list down strings and thier count
-		// * $file_content = "console.log(\"thatsme\")";
-		// */
-		// $file_content = file_get_contents($filename);
-		// $pattern = "/\"[a-zA-Z0-9]*\"/";
-		// preg_match_all($pattern, $file_content, $matches, PREG_OFFSET_CAPTURE, 0);
-
-		// /*
-		// * create a dictionary in which array index is word and value occurance
-		// * example $this->string_literal["object"]=23;
-		// */
-		// $this->string_literal = [];
-		// foreach ($matches[0] as $key => $value) {
-		// 	if(isset($this->string_literal[$value[0]]))
-		// 		$this->string_literal[$value[0]] += 1;
-		// 	else
-		// 		$this->string_literal[$value[0]] = 1;
-		// }
-		// //sort them		
-		// arsort($this->string_literal);
-
-		// //replace string with array index
-		// $javascript = $file_content;
-		// $array_index = 0;
-		// $array_values = [];
-
-		// foreach ($this->string_literal as $key => $value) {
-		// 	//do not process for single occurance
-		// 	if($value<2)
-		// 		continue;
-		// 	$temp_code = $javascript;
-		// 	$pattern = "/".$key."/";
-		// 	$replacement = "h[$array_index]";
-		// 	$temp_code = preg_replace($pattern, $replacement, $temp_code);			
-		// 	if(strlen($file_content) > strlen($temp_code)){
-		// 		array_push($array_values, $key);
-		// 		$javascript = $temp_code;
-		// 		$array_index++;
-		// 	}
-		// }
-		// $array_content = "";
-		// foreach ($array_values as $key => $value) {
-		// 	$array_content .= $value.",";
-		// }
-		// $array_content = substr($array_content, 0, strlen($array_content)-1);
-		// // echo $array_content;
-
-		/*
-		* create var j = Function;
-		* replace function() -> j
-		*/
-		
-		
-		// echo substr($file_content, $index_start+10, 20);
-		
-		// echo $index_start;
-
-		//enclose javascript in scope
-		$javascript = "(function(){var h=[$array_content],f=Function;$javascript})();";
-
-		// return $temp_code;
-		$percent = strlen($javascript)*100/strlen($file_content);
-		return strlen($file_content)." & ".strlen($javascript)." & ".$percent;
-
-		// return $file_content;
-		// return print_r($this->string_literal, true);
 	}
 
 	public static function getVariableDeclaration($filename){
@@ -338,11 +276,12 @@ class JSMIP {
 	}
 }
 
-header("Content-type: text/javascript");
-// header("Content-type: text/html");
+header("Content-type: application/javascript");
+
 $jsmip = new JSMIP;
-$minifiedJavascript = $jsmip->getMinifiedJavascript("../lib/jquery-1.12.0.min.js");
+$minifiedJavascript = $jsmip->getMinifiedJavascript("../lib/jquery-1.12.0.js");
+file_put_contents("output.js", $minifiedJavascript);
+// echo strlen($minifiedJavascript);
 echo $minifiedJavascript;
-// echo " <pre>".JSMIP::getMinifiedJavascript("../lib/jquery-1.12.0.min.js")."</pre>";
-// echo JSMIP::getMinifiedJavascript("../test/test02.js");
+
 ?>
